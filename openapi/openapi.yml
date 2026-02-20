@@ -1,0 +1,344 @@
+openapi: 3.1.0
+info:
+  title: Compliance Evidence & Readiness API
+  description: |
+    Canonical, vendor-neutral API for managing compliance evidence, controls,
+    policies, and readiness. Designed to integrate with external GRC providers
+    (e.g., Drata V1/V2) via adapters without exposing provider-specific semantics.
+  version: 1.0.0
+servers:
+  - url: /api/v1
+    description: Version 1 API
+
+paths:
+  /evidence:
+    post:
+      summary: Register a generated evidence artifact
+      operationId: createEvidence
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Evidence'
+      responses:
+        '201':
+          description: Evidence registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evidence'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+    get:
+      summary: List evidence artifacts
+      operationId: listEvidence
+      parameters:
+        - name: cadence
+          in: query
+          schema:
+            type: string
+            enum: [monthly, quarterly, semi_annual, annual, ad_hoc]
+        - name: period_start
+          in: query
+          schema:
+            type: string
+            format: date
+        - name: period_end
+          in: query
+          schema:
+            type: string
+            format: date
+      responses:
+        '200':
+          description: Evidence list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Evidence'
+                  total:
+                    type: integer
+
+  /evidence/{evidence_id}:
+    get:
+      summary: Get evidence by ID
+      operationId: getEvidence
+      parameters:
+        - name: evidence_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Evidence object
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Evidence'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /controls/{control_id}:
+    put:
+      summary: Create or update a control definition
+      operationId: upsertControl
+      parameters:
+        - name: control_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Control'
+      responses:
+        '200':
+          description: Control stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Control'
+
+  /controls/{control_id}/readiness:
+    get:
+      summary: Get computed readiness for a control
+      operationId: getControlReadiness
+      parameters:
+        - name: control_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Control readiness state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ControlReadiness'
+
+  /policies/{policy_id}:
+    put:
+      summary: Register or update a policy artifact
+      operationId: upsertPolicy
+      parameters:
+        - name: policy_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Policy'
+      responses:
+        '200':
+          description: Policy stored
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Policy'
+
+  /policies/{policy_id}/readiness:
+    get:
+      summary: Get policy acknowledgement readiness
+      operationId: getPolicyReadiness
+      parameters:
+        - name: policy_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Policy readiness state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyReadiness'
+
+components:
+  schemas:
+    Evidence:
+      type: object
+      required:
+        - evidence_id
+        - name
+        - evidence_type
+        - cadence
+        - period
+        - generated_at
+        - source_system
+      properties:
+        evidence_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        evidence_type:
+          type: string
+          enum: [policy, configuration, log, report, screenshot, attestation, export]
+        cadence:
+          type: string
+          enum: [monthly, quarterly, semi_annual, annual, ad_hoc]
+        period:
+          type: object
+          required: [start, end]
+          properties:
+            start:
+              type: string
+              format: date
+            end:
+              type: string
+              format: date
+        generated_at:
+          type: string
+          format: date-time
+        source_system:
+          type: object
+          required: [name]
+          properties:
+            name:
+              type: string
+            version:
+              type: string
+        file:
+          type: object
+          properties:
+            filename:
+              type: string
+            hash:
+              type: string
+            size_bytes:
+              type: integer
+            content_type:
+              type: string
+        related_controls:
+          type: array
+          items:
+            type: string
+        tags:
+          type: array
+          items:
+            type: string
+
+    Control:
+      type: object
+      required: [control_id, name, framework]
+      properties:
+        control_id:
+          type: string
+        external_refs:
+          type: object
+          additionalProperties:
+            type: string
+        name:
+          type: string
+        description:
+          type: string
+        framework:
+          type: string
+          enum: [CMMC, SOC2, ISO27001, CUSTOM]
+        expected_cadence:
+          type: array
+          items:
+            type: string
+            enum: [monthly, quarterly, semi_annual, annual]
+        evidence_requirements:
+          type: array
+          items:
+            type: string
+            enum: [policy, configuration, log, report, attestation]
+
+    ControlReadiness:
+      type: object
+      required: [control_id, readiness_state, evaluated_at]
+      properties:
+        control_id:
+          type: string
+        readiness_state:
+          type: string
+          enum: [ready, partially_ready, not_ready]
+        reasons:
+          type: array
+          items:
+            type: string
+            enum: [missing_evidence, stale_evidence, failed_test, policy_not_acknowledged]
+        supporting_evidence:
+          type: array
+          items:
+            type: string
+        evaluated_at:
+          type: string
+          format: date-time
+
+    Policy:
+      type: object
+      required: [policy_id, name, version, effective_date]
+      properties:
+        policy_id:
+          type: string
+        name:
+          type: string
+        version:
+          type: string
+        effective_date:
+          type: string
+          format: date
+        review_cycle:
+          type: string
+          enum: [annual, bi_annual]
+        file:
+          type: object
+          properties:
+            filename:
+              type: string
+            hash:
+              type: string
+        mapped_controls:
+          type: array
+          items:
+            type: string
+
+    PolicyReadiness:
+      type: object
+      required: [policy_id, acknowledgement_state]
+      properties:
+        policy_id:
+          type: string
+        acknowledgement_state:
+          type: string
+          enum: [fully_acknowledged, partially_acknowledged, not_acknowledged]
+        required_roles:
+          type: array
+          items:
+            type: string
+        acknowledged_by:
+          type: array
+          items:
+            type: object
+            properties:
+              user_id:
+                type: string
+              acknowledged_at:
+                type: string
+                format: date-time
+
+  responses:
+    BadRequest:
+      description: Invalid request
+    NotFound:
+      description: Resource not found
